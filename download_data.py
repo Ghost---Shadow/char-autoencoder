@@ -2,6 +2,7 @@
 Download English word list.
 Falls back to creating a comprehensive sample dataset if online sources are unavailable.
 """
+
 import urllib.request
 import os
 from pathlib import Path

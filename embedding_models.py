@@ -2,6 +2,7 @@
 Pre-trained embedding models (GloVe, Word2Vec) for comparison with autoencoder.
 Uses KNN to find nearest neighbors for interpolation visualization.
 """
+
 import numpy as np
 from pathlib import Path
 from sklearn.neighbors import NearestNeighbors
@@ -87,40 +88,28 @@ class GloVeModel(EmbeddingModel):
         self.model_name = model_name
         self.cache_path = Path(f"./data/{model_name}.pkl")
 
+    def is_downloaded(self) -> bool:
+        """Check if model is already downloaded/cached."""
+        return self.cache_path.exists()
+
     def load(self):
         """Load GloVe embeddings."""
+        if not self.is_downloaded():
+            raise FileNotFoundError(
+                f"GloVe model not found at {self.cache_path}.\n"
+                f"Please download it first by running:\n"
+                f"  python download_embeddings.py --model glove\n"
+                f"Or to download all models:\n"
+                f"  python download_embeddings.py"
+            )
+
         print(f"Loading GloVe model: {self.model_name}...")
-
-        # Try to load from cache
-        if self.cache_path.exists():
-            print("Loading from cache...")
-            with open(self.cache_path, "rb") as f:
-                data = pickle.load(f)
-                self.embeddings = data["embeddings"]
-                self.vocab = data["vocab"]
-                self.word_to_idx = data["word_to_idx"]
-        else:
-            # Download from gensim
-            print("Downloading from gensim-data (this may take a while)...")
-            model = api.load(self.model_name)
-
-            # Convert to our format
-            self.vocab = list(model.key_to_index.keys())
-            self.word_to_idx = {word: idx for idx, word in enumerate(self.vocab)}
-            self.embeddings = np.array([model[word] for word in self.vocab])
-
-            # Cache for faster loading next time
-            self.cache_path.parent.mkdir(exist_ok=True, parents=True)
-            with open(self.cache_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "embeddings": self.embeddings,
-                        "vocab": self.vocab,
-                        "word_to_idx": self.word_to_idx,
-                    },
-                    f,
-                )
-            print(f"Cached model to {self.cache_path}")
+        print("Loading from cache...")
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+            self.embeddings = data["embeddings"]
+            self.vocab = data["vocab"]
+            self.word_to_idx = data["word_to_idx"]
 
         # Build KNN index
         print("Building KNN index...")
@@ -155,43 +144,28 @@ class Word2VecModel(EmbeddingModel):
         self.model_name = model_name
         self.cache_path = Path(f"./data/{model_name}.pkl")
 
+    def is_downloaded(self) -> bool:
+        """Check if model is already downloaded/cached."""
+        return self.cache_path.exists()
+
     def load(self):
         """Load Word2Vec embeddings."""
-        print(f"Loading Word2Vec model: {self.model_name}...")
-
-        # Try to load from cache
-        if self.cache_path.exists():
-            print("Loading from cache...")
-            with open(self.cache_path, "rb") as f:
-                data = pickle.load(f)
-                self.embeddings = data["embeddings"]
-                self.vocab = data["vocab"]
-                self.word_to_idx = data["word_to_idx"]
-        else:
-            # Download from gensim (WARNING: This is 1.6GB!)
-            print(
-                "Downloading from gensim-data (WARNING: Large file ~1.6GB, this will take a while)..."
+        if not self.is_downloaded():
+            raise FileNotFoundError(
+                f"Word2Vec model not found at {self.cache_path}.\n"
+                f"Please download it first by running:\n"
+                f"  python download_embeddings.py --model word2vec\n"
+                f"Or to download all models:\n"
+                f"  python download_embeddings.py"
             )
-            model = api.load(self.model_name)
 
-            # Convert to our format (only use most common words to save memory)
-            print("Converting to internal format (using top 100k words)...")
-            self.vocab = list(model.key_to_index.keys())[:100000]  # Limit to 100k words
-            self.word_to_idx = {word: idx for idx, word in enumerate(self.vocab)}
-            self.embeddings = np.array([model[word] for word in self.vocab])
-
-            # Cache for faster loading next time
-            self.cache_path.parent.mkdir(exist_ok=True, parents=True)
-            with open(self.cache_path, "wb") as f:
-                pickle.dump(
-                    {
-                        "embeddings": self.embeddings,
-                        "vocab": self.vocab,
-                        "word_to_idx": self.word_to_idx,
-                    },
-                    f,
-                )
-            print(f"Cached model to {self.cache_path}")
+        print(f"Loading Word2Vec model: {self.model_name}...")
+        print("Loading from cache...")
+        with open(self.cache_path, "rb") as f:
+            data = pickle.load(f)
+            self.embeddings = data["embeddings"]
+            self.vocab = data["vocab"]
+            self.word_to_idx = data["word_to_idx"]
 
         # Build KNN index
         print("Building KNN index...")

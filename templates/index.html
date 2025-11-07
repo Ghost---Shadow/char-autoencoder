@@ -370,7 +370,9 @@
                 <strong>How it works (Character Autoencoder):</strong>
                 <ul>
                     <li>The model encodes each word into a 128-dimensional latent space</li>
-                    <li>It creates a 10×10 grid of interpolated points between the three words</li>
+                    <li>It creates a 10×10 grid using <strong>parallelogram interpolation</strong> in latent space</li>
+                    <li><strong>Grid corners:</strong> [0,0]=Word1, [max,0]=Word2, [0,max]=Word3, [max,max]=Word2+Word3-Word1</li>
+                    <li>Formula: point[i,j] = Word1 + (i/max)*(Word2-Word1) + (j/max)*(Word3-Word1)</li>
                     <li>Each point is decoded back to generate intermediate word forms</li>
                     <li>Only lowercase letters (a-z) supported, max 10 characters for autoencoder</li>
                 </ul>
@@ -398,7 +400,9 @@
                 title: 'Character Autoencoder',
                 description: [
                     'The model encodes each word into a 128-dimensional latent space',
-                    'It creates a 10×10 grid of interpolated points between the three words',
+                    'It creates a 10×10 grid using <strong>parallelogram interpolation</strong> in latent space',
+                    '<strong>Grid corners:</strong> [0,0]=Word1, [max,0]=Word2, [0,max]=Word3, [max,max]=Word2+Word3-Word1',
+                    'Formula: point[i,j] = Word1 + (i/max)*(Word2-Word1) + (j/max)*(Word3-Word1)',
                     'Each point is decoded back to generate intermediate word forms',
                     'Only lowercase letters (a-z) supported, max 10 characters for autoencoder'
                 ]

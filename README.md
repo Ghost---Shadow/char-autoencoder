@@ -17,7 +17,9 @@ The model learns to reconstruct reversed input sequences, which forces it to lea
 🚀 **GPU Support**: Automatic CUDA detection and usage for faster training
 📊 **Progress Tracking**: Beautiful tqdm progress bars with real-time metrics
 💾 **Smart Checkpointing**: Saves model checkpoints every 250 epochs to `./artifacts/`
-🎨 **Latent Space Interpolation**: Visualize smooth transitions between words
+🎨 **Latent Space Interpolation**: Visualize smooth transitions between words with parallelogram interpolation
+🔄 **Multiple Models**: Compare character autoencoder with pre-trained embeddings (GloVe, Word2Vec)
+📥 **Easy Model Download**: Dedicated script to download and cache pre-trained embeddings
 
 ## Requirements
 
@@ -70,7 +72,27 @@ The script will:
 
 **GPU Support**: The script automatically detects and uses CUDA if available.
 
-### 3. Visualize Latent Space
+### 3. (Optional) Download Pre-trained Embeddings
+
+To compare with pre-trained word embeddings (GloVe and Word2Vec):
+
+```bash
+python download_embeddings.py
+```
+
+This will download and cache:
+- **GloVe** (glove-wiki-gigaword-50): ~66MB
+- **Word2Vec** (word2vec-google-news-300): ~1.6GB
+
+You can also download specific models:
+```bash
+python download_embeddings.py --model glove      # Only GloVe
+python download_embeddings.py --model word2vec   # Only Word2Vec
+```
+
+**Note**: These are optional and only needed if you want to compare the character autoencoder with pre-trained word embeddings.
+
+### 4. Visualize Latent Space
 
 You have two options for visualizing interpolations:
 
@@ -86,31 +108,66 @@ Features:
 - 📊 Visual grid display of interpolations
 - 💡 Pre-loaded example word triplets
 - 🚀 Real-time results
+- 🔄 Switch between models: Character Autoencoder, GloVe, or Word2Vec
 
 **Option B: Command Line**
 ```bash
+# Use character autoencoder (default)
 python interp_demo.py
+
+# Use GloVe embeddings
+python interp_demo.py --model glove
+
+# Use Word2Vec embeddings
+python interp_demo.py --model word2vec
+
+# Compare all models
+python interp_demo.py --model all
 ```
 
-This loads the trained model and demonstrates latent space interpolation for various word triplets in the terminal.
+This demonstrates latent space interpolation for various word triplets in the terminal.
 
-**Example Output**:
-```
-Test case 4: ['cabbage', 'cab', 'cabin']
+**Example Output (Char-level-LSTM)**:
+
+Test case 1: ['man', 'woman', 'king']
 --------------------------------------------------------------------------------
-Interpolation grid (rows: apple→ball, cols: apple→goat):
+Interpolation grid (2D manifold):
+  Corners: [man] at [0,0], [woman] at [9,0], [king] at [0,9]
+  Fourth corner [9,9] = woman + king - man (computed)
 
-Row 0:      cabbage |      cabbage |      ccbbage |       cabbge |       cabbge |       cabbin |       cabbin |       ccabin |        cabin |        cabin
-Row 1:      cabbage |       cbbbge |       cabbge |       cabbge |       cabbgn |       ccabin |        cabin |        cabin |        cabin |        cabin
-Row 2:       cabbge |       cabbge |       cabbge |        abbge |        cabin |        cabin |        cabin |        cabin |        dabin |         abin
-Row 3:       cabbge |        abbge |        cabge |        cabgl |        caban |        cabin |         abin |         abin |         abin |         cbin
-Row 4:        jbbge |        cabge |        cabae |        dabal |         abal |         abal |         abin |         cbin |         cbin |          bin
-Row 5:        dabge |         abae |         abab |         abab |         abab |         cbab |          bab |          bad |          cad |          cid
-Row 6:         abab |         abab |         abab |         dbab |          bab |          bab |          cab |          cab |          cad |          cad
-Row 7:         abab |         dbab |          bab |          cab |          cab |          cab |          cab |          cab |          cad |          dad
-Row 8:          cab |          cab |          cab |          cab |          cab |          cab |          dab |          dab |          dad |           ad
-Row 9:          cab |          cab |          cab |          cab |          dab |           ab |           ab |           ab |           ab |           ad
-```
+Row 0:          man |          man |          man |          kan |          kng |         wing |         king |         king |         king |         king
+Row 1:          man |          man |          man |          kan |         wkng |         wing |         king |         king |         king |         king
+Row 2:          man |          man |          man |         wman |         wing |         king |         king |         king |        wking |        wking
+Row 3:          man |         oman |         oman |         iman |         wiag |         king |         king |        wking |        wking |        wking
+Row 4:         oman |         oman |         oman |         oman |         wiag |        wwing |        wking |        wking |        wking |        wking
+Row 5:         oman |         oman |         oman |         oman |        woiag |        wwing |        wking |        wking |        wking |        wking
+Row 6:         oman |         oman |        woman |        woman |        woian |        wwing |        wking |        wking |        wking |       wwking
+Row 7:         oman |        woman |        woman |        woman |        woian |        wwing |        wking |        wking |       wwking |       woking
+Row 8:        woman |        woman |        woman |        woman |        woian |        woiag |       wowing |       woking |       woking |       woking
+Row 9:        woman |        woman |        woman |        woman |       wooian |       wooiag |       wowing |       woking |       woning |       woning
+
+**Example Output (Word2Vec)**:
+
+
+
+**Example Output (Glove)**:
+
+Test case 1: ['man', 'woman', 'king']
+--------------------------------------------------------------------------------
+Interpolation grid (2D manifold):
+  Corners: [man] at [0,0], [woman] at [9,0], [king] at [0,9]
+  Fourth corner [9,9] = woman + king - man (computed)
+
+Row 0:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
+Row 1:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
+Row 2:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
+Row 3:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
+Row 4:          man |          man |          man |          man |       father |       father |         king |         king |         king |         king
+Row 5:        woman |        woman |        woman |        woman |       mother |       father |         king |         king |         king |         king
+Row 6:        woman |        woman |        woman |        woman |       mother |       mother |         king |         king |         king |         king
+Row 7:        woman |        woman |        woman |        woman |       mother |       mother |        queen |         king |         king |         king
+Row 8:        woman |        woman |        woman |        woman |       mother |       mother |        queen |        queen |         king |         king
+Row 9:        woman |        woman |        woman |        woman |       mother |       mother |       mother |        queen |         king |         king
 
 ## Model Details
 
@@ -130,7 +187,35 @@ Given three words A, B, C, the model:
 2. Creates a 2D interpolation grid between the three points
 3. Decodes each point in the grid to generate interpolated words
 
-This allows visualization of smooth transitions in the learned latent space.
+**Interpolation Method**: The model uses **parallelogram interpolation** to create a 2D manifold in latent space:
+- **Corner [0,0]**: Word A (first input)
+- **Corner [max,0]**: Word B (second input)
+- **Corner [0,max]**: Word C (third input)
+- **Corner [max,max]**: Computed as `B + C - A` (the opposite corner of the parallelogram)
+
+The interpolation formula is: `point[i,j] = A + (i/max)*(B-A) + (j/max)*(C-A)`
+
+This creates a bilinear interpolation where:
+- Rows interpolate from A→B, shifted by the A→C direction
+- Columns interpolate from A→C, shifted by the A→B direction
+- The fourth corner is **automatically computed**, not directly encoded from an input
+
+This allows visualization of smooth transitions in the learned latent space and exploration of the 2D manifold defined by the three input words.
+
+**Example Use Cases**: The parallelogram interpolation works particularly well for demonstrating transformations:
+
+**Semantic Relationships** (like the classic word2vec analogy):
+- `["man", "woman", "king"]` → Fourth corner should approximate "queen" (gender transformation transfer)
+  - Formula: `woman + king - man ≈ queen`
+  - This is the famous word embedding analogy demonstrating that the model learns semantic relationships
+
+**Morphological Transformations** (character-level patterns):
+- `["cat", "cats", "dog"]` → Fourth corner should approximate "dogs" (plural transformation transfer)
+- `["run", "running", "walk"]` → Fourth corner should approximate "walking" (gerund transformation transfer)
+- `["happy", "happier", "sad"]` → Fourth corner should approximate "sadder" (comparative transformation transfer)
+- `["fast", "faster", "slow"]` → Fourth corner should approximate "slower"
+
+These examples work well because the model learns to transfer patterns (both semantic relationships and character-level patterns like adding "-s", "-ing", or "-er") across different base words.
 
 ## Training Tips
 

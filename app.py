@@ -2,7 +2,21 @@
 Flask Web Server for Character Autoencoder Interpolation Demo
 Allows interactive word interpolation through a web interface.
 Supports: Autoencoder, GloVe, Word2Vec
+
+Interpolation Method (Autoencoder):
+    Uses parallelogram interpolation to create a 2D manifold in latent space.
+    Given three words A, B, C:
+        - Corner [0,0]: A (first word)
+        - Corner [max,0]: B (second word)
+        - Corner [0,max]: C (third word)
+        - Corner [max,max]: B + C - A (computed fourth corner)
+    Formula: point[i,j] = A + (i/max)*(B-A) + (j/max)*(C-A)
+
+    The fourth corner is automatically computed from the other three corners,
+    not directly encoded from an input word. This creates a bilinear interpolation
+    forming a parallelogram in the latent space.
 """
+
 from flask import Flask, render_template, request, jsonify
 import torch
 import numpy as np
@@ -157,18 +171,39 @@ def interpolate():
 
 @app.route("/examples")
 def examples():
-    """Get example word triplets."""
+    """
+    Get example word triplets that demonstrate parallelogram interpolation.
+
+    These examples follow patterns where B+C-A produces intuitive results:
+    - [A, B, C] where B applies a transformation to A, and the fourth corner
+      should apply the same transformation to C.
+
+    Examples:
+        ["man", "woman", "king"] → fourth corner ≈ "queen" (classic word2vec analogy)
+        ["cat", "cats", "dog"] → fourth corner ≈ "dogs" (plural transfer)
+        ["run", "running", "walk"] → fourth corner ≈ "walking" (gerund transfer)
+    """
     example_triplets = [
-        ["apple", "ball", "goat"],
-        ["cat", "dog", "bird"],
-        ["red", "green", "blue"],
-        ["baseball", "ball", "base"],
-        ["cabbage", "cab", "cabin"],
-        ["abc", "def", "ghi"],
-        ["sun", "moon", "star"],
-        ["fire", "water", "earth"],
-        ["love", "hate", "like"],
-        ["run", "walk", "jump"],
+        # Classic word2vec analogy: man→woman, king→queen (gender transfer)
+        ["man", "woman", "king"],
+        # Plural transformation: cat→cats, dog→dogs
+        ["cat", "cats", "dog"],
+        # Gerund transformation: run→running, walk→walking
+        ["run", "running", "walk"],
+        # Comparative adjectives: happy→happier, sad→sadder
+        ["happy", "happier", "sad"],
+        # Comparative size: small→smaller, big→bigger
+        ["small", "smaller", "big"],
+        # Comparative speed: fast→faster, slow→slower
+        ["fast", "faster", "slow"],
+        # Temperature comparatives: hot→hotter, cold→colder
+        ["hot", "hotter", "cold"],
+        # Verb gerunds: play→playing, jump→jumping
+        ["play", "playing", "jump"],
+        # Adverb formation: quick→quickly, slow→slowly
+        ["quick", "quickly", "slow"],
+        # Past tense: walk→walked, jump→jumped
+        ["walk", "walked", "jump"],
     ]
     return jsonify({"examples": example_triplets})
 
