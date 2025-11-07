@@ -297,3 +297,70 @@ class Seq2SeqAutoencoder(nn.Module):
         )
 
         return result_strings
+
+    @torch.no_grad()
+    def compute_parallelogram_error(self, strings, device="cpu"):
+        """
+        Compute the "wobbliness" of the parallelogram by measuring L2 distance
+        between ideal interpolated points and actual decoded/re-encoded points.
+
+        Args:
+            strings: List of 3 strings to interpolate between
+            device: Device to run on
+
+        Returns:
+            Dictionary with error statistics and visualization data
+        """
+        assert len(strings) == 3
+
+        # Encode given strings
+        v = stringsToArray(strings)
+        v = torch.from_numpy(v).squeeze(-1).long().to(device)
+        s_orig, c_orig = self.encode(v)
+
+        # Convert to numpy for interpolation
+        s_orig_np = s_orig.cpu().numpy()
+        c_orig_np = c_orig.cpu().numpy()
+
+        # Interpolate in latent space (IDEAL parallelogram)
+        s_ideal, c_ideal = self._get_interpolated_vectors(s_orig_np, c_orig_np)
+
+        # Convert back to tensors
+        s_ideal_torch = torch.from_numpy(s_ideal).float().to(device)
+        c_ideal_torch = torch.from_numpy(c_ideal).float().to(device)
+
+        # Decode (this introduces quantization error)
+        indices_batch = self.decode(s_ideal_torch, c_ideal_torch)
+
+        # Re-encode the decoded strings to get ACTUAL positions
+        s_actual, c_actual = self.encode(indices_batch)
+        s_actual_np = s_actual.cpu().numpy()
+        c_actual_np = c_actual.cpu().numpy()
+
+        # Compute L2 distances
+        s_distances = np.linalg.norm(s_ideal - s_actual_np, axis=1)
+        c_distances = np.linalg.norm(c_ideal - c_actual_np, axis=1)
+        total_distances = np.sqrt(s_distances**2 + c_distances**2)
+
+        # Reshape for grid
+        s_distances_grid = s_distances.reshape(
+            self.interp_steps + 1, self.interp_steps + 1
+        )
+        c_distances_grid = c_distances.reshape(
+            self.interp_steps + 1, self.interp_steps + 1
+        )
+        total_distances_grid = total_distances.reshape(
+            self.interp_steps + 1, self.interp_steps + 1
+        )
+
+        return {
+            "mean_error": float(np.mean(total_distances)),
+            "max_error": float(np.max(total_distances)),
+            "min_error": float(np.min(total_distances)),
+            "std_error": float(np.std(total_distances)),
+            "error_grid": total_distances_grid.tolist(),
+            "s_ideal": s_ideal,  # For visualization
+            "c_ideal": c_ideal,
+            "s_actual": s_actual_np,
+            "c_actual": c_actual_np,
+        }

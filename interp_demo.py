@@ -174,9 +174,17 @@ for model_name in model_names:
                     result_strings = model_obj.generate_text_summary(
                         strings, device=device
                     )
+                    # Compute parallelogram error (wobbliness)
+                    error_stats = model_obj.compute_parallelogram_error(
+                        strings, device=device
+                    )
                 else:
                     # GloVe or Word2Vec
                     result_strings = model_obj.interpolate_grid(
+                        strings[0], strings[1], strings[2], grid_size=10
+                    )
+                    # Compute parallelogram error (wobbliness)
+                    error_stats = model_obj.compute_parallelogram_error(
                         strings[0], strings[1], strings[2], grid_size=10
                     )
 
@@ -189,6 +197,19 @@ for model_name in model_names:
                     f"  Fourth corner [9,9] = {strings[1]} + {strings[2]} - {strings[0]} (computed)"
                 )
                 print()
+
+                # Print parallelogram error statistics (Wobbly Line Hypothesis)
+                print(f"📊 Parallelogram Error (Wobbliness):")
+                print(f"  Mean L2 distance:  {error_stats['mean_error']:.4f}")
+                print(f"  Max L2 distance:   {error_stats['max_error']:.4f}")
+                print(f"  Min L2 distance:   {error_stats['min_error']:.4f}")
+                print(f"  Std L2 distance:   {error_stats['std_error']:.4f}")
+                print()
+                print(
+                    "  (This measures how much the decoded words deviate from the ideal parallelogram)"
+                )
+                print()
+
                 for row_idx, row in enumerate(result_strings):
                     print(f"Row {row_idx}: ", end="")
                     print(" | ".join(f"{s:>12s}" for s in row))

@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Character Autoencoder - Latent Space Interpolation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
         * {
             margin: 0;
@@ -298,6 +300,156 @@
             margin-top: 10px;
         }
 
+        .viz-section {
+            display: none;
+            margin-top: 20px;
+        }
+
+        .viz-section.show {
+            display: block;
+        }
+
+        .viz-container {
+            width: 100%;
+            height: 600px;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+            position: relative;
+        }
+
+        .viz-canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .viz-controls {
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .viz-btn {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .viz-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .error-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        .error-stat {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .error-stat-label {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .error-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .viz-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            color: #1976d2;
+        }
+
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            white-space: nowrap;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .tooltip.show {
+            display: block;
+        }
+
+        .viz-loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: white;
+            z-index: 100;
+            display: none;
+        }
+
+        .viz-loading.show {
+            display: block;
+        }
+
+        .viz-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        .viz-loading p {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 1.8rem;
@@ -311,6 +463,10 @@
             .grid-cell {
                 font-size: 0.6rem;
                 padding: 2px;
+            }
+
+            .viz-container {
+                height: 400px;
             }
         }
     </style>
@@ -390,6 +546,59 @@
                 <div class="result-words" id="resultWords"></div>
             </div>
             <div class="interpolation-grid" id="interpolationGrid"></div>
+        </div>
+
+        <div class="card viz-section" id="vizSection">
+            <h2 style="color: #667eea; margin-bottom: 20px;">📐 Wobbly Line Hypothesis Visualization</h2>
+
+            <div class="viz-info">
+                <strong>The Wobbly Line Hypothesis:</strong> When we decode interpolated points (autoencoder) or find nearest neighbors (GloVe/Word2Vec),
+                we're rounding to discrete outputs. This means the actual decoded/quantized points don't form a perfect parallelogram in latent space.
+                <br><br>
+                <strong>Char-Level Autoencoder:</strong> The visualization shows the ideal parallelogram as a <span style="color: #00ff00;">green semi-transparent surface mesh</span>.
+                The <span style="color: #ff0000;">red points</span> show where the decoded words actually land when re-encoded - this is the "wobble".
+                The <span style="color: #ffff00;">3 yellow spheres</span> are your input words, and the <span style="color: #ff00ff;">magenta sphere</span> is the computed 4th corner.
+                <br><br>
+                <strong>GloVe/Word2Vec:</strong> Shows ideal interpolation points vs nearest-neighbor quantization in the embedding space.
+            </div>
+
+            <div class="error-stats" id="errorStats"></div>
+
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #00ff00; opacity: 0.5;"></div>
+                    <span>Ideal Parallelogram Surface</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff0000;"></div>
+                    <span>Actual Decoded Points (wobble)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffff00;"></div>
+                    <span>Input Corner Points (3)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff00ff;"></div>
+                    <span>Computed 4th Corner</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffff00; opacity: 0.3;"></div>
+                    <span>Offset Lines</span>
+                </div>
+            </div>
+
+            <div class="viz-container">
+                <div id="vizCanvas" class="viz-canvas"></div>
+                <div id="vizLoading" class="viz-loading">
+                    <div class="viz-spinner"></div>
+                    <p>Generating 3D visualization...</p>
+                </div>
+                <div id="tooltip" class="tooltip"></div>
+            </div>
+
+            <p style="text-align: center; margin-top: 15px; color: #666; font-size: 0.9rem;">
+                💡 Drag to rotate, scroll to zoom, hover over points to see words
+            </p>
         </div>
     </div>
 
@@ -523,6 +732,8 @@
             document.getElementById('word3').value = '';
             document.getElementById('errorAlert').classList.remove('show');
             document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('vizSection').classList.remove('show');
+            document.getElementById('vizLoading').classList.remove('show');
         });
 
         // Handle Enter key
@@ -577,6 +788,305 @@
 
             // Scroll to results
             document.getElementById('resultSection').scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+
+            // Fetch and display visualization
+            fetchVisualization(words, modelType);
+        }
+
+        async function fetchVisualization(words, modelType) {
+            // Show visualization section and loader
+            document.getElementById('vizSection').classList.add('show');
+
+            // Clear previous visualization and show loader
+            const vizCanvas = document.getElementById('vizCanvas');
+            vizCanvas.innerHTML = ''; // Clear old scene
+            document.getElementById('vizLoading').classList.add('show');
+
+            try {
+                const response = await fetch('/visualize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        word1: words[0],
+                        word2: words[1],
+                        word3: words[2],
+                        model_type: modelType
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayVisualization(data);
+                } else {
+                    console.error('Visualization error:', data.error);
+                    document.getElementById('vizLoading').classList.remove('show');
+                }
+            } catch (error) {
+                console.error('Failed to fetch visualization:', error);
+                document.getElementById('vizLoading').classList.remove('show');
+            }
+        }
+
+        let scene, camera, renderer, controls;
+        let idealPointsMesh, actualPointsMesh;
+        let wordsData = [];
+        let raycaster, mouse;
+
+        function displayVisualization(data) {
+            // Display error statistics
+            const statsContainer = document.getElementById('errorStats');
+            statsContainer.innerHTML = `
+                <div class="error-stat">
+                    <div class="error-stat-label">Mean L2 Distance</div>
+                    <div class="error-stat-value">${data.error_stats.mean.toFixed(4)}</div>
+                </div>
+                <div class="error-stat">
+                    <div class="error-stat-label">Max L2 Distance</div>
+                    <div class="error-stat-value">${data.error_stats.max.toFixed(4)}</div>
+                </div>
+                <div class="error-stat">
+                    <div class="error-stat-label">Min L2 Distance</div>
+                    <div class="error-stat-value">${data.error_stats.min.toFixed(4)}</div>
+                </div>
+                <div class="error-stat">
+                    <div class="error-stat-label">Std Deviation</div>
+                    <div class="error-stat-value">${data.error_stats.std.toFixed(4)}</div>
+                </div>
+            `;
+
+            // Store words data for tooltips
+            wordsData = data.words;
+
+            // Initialize Three.js scene
+            initThreeScene(data.ideal_points, data.actual_points, data);
+        }
+
+        function initThreeScene(idealPoints, actualPoints, vizData = {}) {
+            const container = document.getElementById('vizCanvas');
+
+            // Clean up previous scene if it exists
+            if (renderer) {
+                renderer.dispose();
+                renderer = null;
+            }
+            if (controls) {
+                controls.dispose();
+                controls = null;
+            }
+
+            container.innerHTML = ''; // Clear previous visualization
+
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(
+                75,
+                container.clientWidth / container.clientHeight,
+                0.1,
+                1000
+            );
+            camera.position.z = 3;
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Initialize raycaster and mouse
+            raycaster = new THREE.Raycaster();
+            raycaster.params.Points.threshold = 0.1; // Increase picking threshold
+            mouse = new THREE.Vector2();
+
+            // For char-level autoencoder, create a mesh surface for the ideal parallelogram
+            if (vizData.model_type === 'autoencoder' && vizData.ideal_grid) {
+                // Create mesh from ideal grid (10x10 grid)
+                const gridSize = vizData.grid_size;
+                const vertices = [];
+                const indices = [];
+
+                // Create vertices from grid
+                for (let i = 0; i < gridSize; i++) {
+                    for (let j = 0; j < gridSize; j++) {
+                        const point = vizData.ideal_grid[i][j];
+                        vertices.push(point[0], point[1], point[2]);
+                    }
+                }
+
+                // Create indices for triangles (two triangles per grid cell)
+                for (let i = 0; i < gridSize - 1; i++) {
+                    for (let j = 0; j < gridSize - 1; j++) {
+                        const topLeft = i * gridSize + j;
+                        const topRight = i * gridSize + j + 1;
+                        const bottomLeft = (i + 1) * gridSize + j;
+                        const bottomRight = (i + 1) * gridSize + j + 1;
+
+                        // First triangle
+                        indices.push(topLeft, bottomLeft, topRight);
+                        // Second triangle
+                        indices.push(topRight, bottomLeft, bottomRight);
+                    }
+                }
+
+                // Create mesh geometry
+                const meshGeometry = new THREE.BufferGeometry();
+                meshGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vertices), 3));
+                meshGeometry.setIndex(indices);
+                meshGeometry.computeVertexNormals();
+
+                // Create semi-transparent mesh material
+                const meshMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.2,
+                    side: THREE.DoubleSide,
+                    wireframe: false
+                });
+
+                const mesh = new THREE.Mesh(meshGeometry, meshMaterial);
+                scene.add(mesh);
+
+                // Add wireframe for the mesh
+                const wireframeGeometry = new THREE.WireframeGeometry(meshGeometry);
+                const wireframeMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, opacity: 0.3, transparent: true });
+                const wireframe = new THREE.LineSegments(wireframeGeometry, wireframeMaterial);
+                scene.add(wireframe);
+            }
+
+            // Add ideal points (green) - smaller if mesh is shown
+            const idealGeometry = new THREE.BufferGeometry();
+            const idealPositions = new Float32Array(idealPoints.flat());
+            idealGeometry.setAttribute('position', new THREE.BufferAttribute(idealPositions, 3));
+            const idealSize = vizData.model_type === 'autoencoder' ? 0.05 : 0.08;
+            const idealMaterial = new THREE.PointsMaterial({ color: 0x00ff00, size: idealSize });
+            idealPointsMesh = new THREE.Points(idealGeometry, idealMaterial);
+            scene.add(idealPointsMesh);
+
+            // Add actual points (red)
+            const actualGeometry = new THREE.BufferGeometry();
+            const actualPositions = new Float32Array(actualPoints.flat());
+            actualGeometry.setAttribute('position', new THREE.BufferAttribute(actualPositions, 3));
+            const actualMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 0.08 });
+            actualPointsMesh = new THREE.Points(actualGeometry, actualMaterial);
+            scene.add(actualPointsMesh);
+
+            // Highlight the 3 corner points (original inputs) with larger spheres
+            if (vizData.corner_indices) {
+                const corners = [
+                    vizData.corner_indices.word1,
+                    vizData.corner_indices.word2,
+                    vizData.corner_indices.word3
+                ];
+
+                corners.forEach((idx, i) => {
+                    const point = idealPoints[idx];
+                    const sphereGeometry = new THREE.SphereGeometry(0.06, 16, 16);
+                    const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+                    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                    sphere.position.set(point[0], point[1], point[2]);
+                    scene.add(sphere);
+                });
+
+                // Highlight the computed 4th corner differently
+                const fourthCorner = idealPoints[vizData.corner_indices.word4];
+                const fourthSphereGeometry = new THREE.SphereGeometry(0.06, 16, 16);
+                const fourthSphereMaterial = new THREE.MeshBasicMaterial({ color: 0xff00ff }); // Magenta
+                const fourthSphere = new THREE.Mesh(fourthSphereGeometry, fourthSphereMaterial);
+                fourthSphere.position.set(fourthCorner[0], fourthCorner[1], fourthCorner[2]);
+                scene.add(fourthSphere);
+            }
+
+            // Add connection lines (yellow)
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xffff00, opacity: 0.3, transparent: true });
+            for (let i = 0; i < idealPoints.length; i++) {
+                const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(...idealPoints[i]),
+                    new THREE.Vector3(...actualPoints[i])
+                ]);
+                const line = new THREE.Line(lineGeometry, lineMaterial);
+                scene.add(line);
+            }
+
+            // Add axes helper
+            const axesHelper = new THREE.AxesHelper(2);
+            scene.add(axesHelper);
+
+            // Add grid
+            const gridHelper = new THREE.GridHelper(4, 10, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            // Animation loop
+            function animate() {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+            }
+            animate();
+
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                camera.aspect = container.clientWidth / container.clientHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            // Mouse move handler for tooltips
+            const tooltip = document.getElementById('tooltip');
+            renderer.domElement.addEventListener('mousemove', (event) => {
+                const rect = renderer.domElement.getBoundingClientRect();
+
+                // Calculate mouse position in normalized device coordinates (-1 to +1)
+                mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+                // Update the picking ray
+                raycaster.setFromCamera(mouse, camera);
+
+                // Check for intersections with both point clouds
+                const intersects = raycaster.intersectObjects([idealPointsMesh, actualPointsMesh]);
+
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const pointIndex = intersect.index;
+
+                    if (pointIndex < wordsData.length) {
+                        const word = wordsData[pointIndex];
+                        const pointType = intersect.object === idealPointsMesh ? 'Ideal' : 'Actual';
+
+                        // Show tooltip
+                        tooltip.innerHTML = `<strong>${pointType}:</strong> ${word}`;
+                        tooltip.style.left = (event.clientX + 10) + 'px';
+                        tooltip.style.top = (event.clientY - 30) + 'px';
+                        tooltip.classList.add('show');
+                    }
+                } else {
+                    // Hide tooltip
+                    tooltip.classList.remove('show');
+                }
+            });
+
+            // Hide tooltip when mouse leaves canvas
+            renderer.domElement.addEventListener('mouseleave', () => {
+                tooltip.classList.remove('show');
+            });
+
+            // Hide loader after scene is initialized
+            document.getElementById('vizLoading').classList.remove('show');
+
+            // Scroll visualization into view
+            document.getElementById('vizSection').scrollIntoView({
                 behavior: 'smooth',
                 block: 'start'
             });

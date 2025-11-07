@@ -21,6 +21,7 @@ from flask import Flask, render_template, request, jsonify
 import torch
 import numpy as np
 from pathlib import Path
+from sklearn.decomposition import PCA
 
 from model import Seq2SeqAutoencoder
 from embedding_models import get_embedding_model
@@ -206,6 +207,145 @@ def examples():
         ["walk", "walked", "jump"],
     ]
     return jsonify({"examples": example_triplets})
+
+
+@app.route("/visualize", methods=["POST"])
+def visualize():
+    """
+    Get 3D visualization data for parallelogram wobbliness.
+    Returns PCA-reduced ideal and actual embeddings for Three.js rendering.
+    """
+    try:
+        data = request.get_json()
+        word1 = data.get("word1", "").strip().lower()
+        word2 = data.get("word2", "").strip().lower()
+        word3 = data.get("word3", "").strip().lower()
+        model_type = data.get("model_type", "autoencoder").strip().lower()
+
+        # Validate inputs
+        if not all([word1, word2, word3]):
+            return (
+                jsonify({"success": False, "error": "All three words are required."}),
+                400,
+            )
+
+        # Compute error statistics based on model type
+        if model_type == "autoencoder":
+            # Length check for autoencoder
+            for word in [word1, word2, word3]:
+                if len(word) > 10:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": f"Word '{word}' is too long. Maximum length is 10 characters.",
+                            }
+                        ),
+                        400,
+                    )
+
+            with torch.no_grad():
+                # Get word grid for tooltips
+                word_grid = model.generate_text_summary([word1, word2, word3], device=device)
+                # Get error stats
+                error_stats = model.compute_parallelogram_error(
+                    [word1, word2, word3], device=device
+                )
+
+            # Concatenate hidden and cell states for full representation
+            ideal_embeddings = np.concatenate(
+                [error_stats["s_ideal"], error_stats["c_ideal"]], axis=1
+            )
+            actual_embeddings = np.concatenate(
+                [error_stats["s_actual"], error_stats["c_actual"]], axis=1
+            )
+
+            # Flatten word grid to match point order
+            words_flat = word_grid.flatten().tolist()
+
+        elif model_type in ["glove", "word2vec"]:
+            try:
+                embedding_model = get_embedding_model(model_type)
+                # Get word grid for tooltips
+                word_grid = embedding_model.interpolate_grid(
+                    word1, word2, word3, grid_size=10
+                )
+                # Get error stats
+                error_stats = embedding_model.compute_parallelogram_error(
+                    word1, word2, word3, grid_size=10
+                )
+                ideal_embeddings = error_stats["ideal_embeddings"]
+                actual_embeddings = error_stats["actual_embeddings"]
+
+                # Flatten word grid to match point order
+                words_flat = word_grid.flatten().tolist()
+            except ValueError as e:
+                return jsonify({"success": False, "error": str(e)}), 400
+
+        else:
+            return (
+                jsonify(
+                    {"success": False, "error": f"Unknown model type: {model_type}"}
+                ),
+                400,
+            )
+
+        # Apply PCA to reduce to 3D for visualization
+        all_embeddings = np.vstack([ideal_embeddings, actual_embeddings])
+        pca = PCA(n_components=3)
+        reduced = pca.fit_transform(all_embeddings)
+
+        # Split back into ideal and actual
+        n_points = len(ideal_embeddings)
+        ideal_3d = reduced[:n_points].tolist()
+        actual_3d = reduced[n_points:].tolist()
+
+        # Identify corner points (indices in the 10x10 grid)
+        # For a 10x10 grid: [0,0]=0, [9,0]=9, [0,9]=90, [9,9]=99
+        corner_indices = {
+            "word1": 0,      # Top-left [0,0]
+            "word2": 9,      # Top-right [9,0]
+            "word3": 90,     # Bottom-left [0,9]
+            "word4": 99      # Bottom-right [9,9] - computed corner
+        }
+
+        # For char-level model, structure data as a grid for mesh rendering
+        grid_size = 10
+        ideal_grid = np.array(ideal_3d).reshape(grid_size, grid_size, 3).tolist()
+        actual_grid = np.array(actual_3d).reshape(grid_size, grid_size, 3).tolist()
+
+        return jsonify(
+            {
+                "success": True,
+                "model_type": model_type,
+                "error_stats": {
+                    "mean": error_stats["mean_error"],
+                    "max": error_stats["max_error"],
+                    "min": error_stats["min_error"],
+                    "std": error_stats["std_error"],
+                },
+                "ideal_points": ideal_3d,
+                "actual_points": actual_3d,
+                "ideal_grid": ideal_grid,  # For mesh rendering
+                "actual_grid": actual_grid,
+                "words": words_flat,
+                "corner_indices": corner_indices,
+                "corner_words": [word1, word2, word3, words_flat[99]],  # Including computed 4th corner word
+                "grid_size": grid_size,
+                "variance_explained": pca.explained_variance_ratio_.tolist(),
+            }
+        )
+
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return (
+            jsonify(
+                {"success": False, "error": f"Error during visualization: {str(e)}"}
+            ),
+            500,
+        )
 
 
 if __name__ == "__main__":

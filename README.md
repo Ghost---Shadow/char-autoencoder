@@ -20,6 +20,8 @@ The model learns to reconstruct reversed input sequences, which forces it to lea
 🎨 **Latent Space Interpolation**: Visualize smooth transitions between words with parallelogram interpolation
 🔄 **Multiple Models**: Compare character autoencoder with pre-trained embeddings (GloVe, Word2Vec)
 📥 **Easy Model Download**: Dedicated script to download and cache pre-trained embeddings
+📐 **Wobbly Line Hypothesis**: Quantify parallelogram "wobbliness" with L2 distance metrics
+🎯 **3D Visualization**: Interactive Three.js visualization showing ideal vs actual parallelograms in PCA-reduced space
 
 ## Requirements
 
@@ -135,6 +137,14 @@ Interpolation grid (2D manifold):
   Corners: [man] at [0,0], [woman] at [9,0], [king] at [0,9]
   Fourth corner [9,9] = woman + king - man (computed)
 
+📊 Parallelogram Error (Wobbliness):
+  Mean L2 distance:  16.6227
+  Max L2 distance:   19.7151
+  Min L2 distance:   14.0255
+  Std L2 distance:   1.4365
+
+  (This measures how much the decoded words deviate from the ideal parallelogram)
+
 Row 0:          man |          man |          man |          kan |          kng |         wing |         king |         king |         king |         king
 Row 1:          man |          man |          man |          kan |         wkng |         wing |         king |         king |         king |         king
 Row 2:          man |          man |          man |         wman |         wing |         king |         king |         king |        wking |        wking
@@ -148,7 +158,30 @@ Row 9:        woman |        woman |        woman |        woman |       wooian 
 
 **Example Output (Word2Vec)**:
 
+Test case 1: ['man', 'woman', 'king']
+--------------------------------------------------------------------------------
+Interpolation grid (2D manifold):
+  Corners: [man] at [0,0], [woman] at [9,0], [king] at [0,9]
+  Fourth corner [9,9] = woman + king - man (computed)
 
+📊 Parallelogram Error (Wobbliness):
+  Mean L2 distance:  1.0858
+  Max L2 distance:   2.0284
+  Min L2 distance:   0.0000
+  Std L2 distance:   0.5179
+
+  (This measures how much the decoded words deviate from the ideal parallelogram)
+
+Row 0:          man |          man |          man |          man |         king |         king |         king |         king |         king |         king
+Row 1:          man |          man |          man |          man |         king |         king |         king |         king |         king |         king
+Row 2:          man |          man |          man |          man |         king |         king |         king |         king |         king |         king
+Row 3:          man |          man |          man |          man |         king |         king |         king |         king |         king |         king
+Row 4:          man |        woman |        woman |        woman |        woman |         king |         king |         king |         king |         king
+Row 5:        woman |        woman |        woman |        woman |        woman |         king |         king |         king |         king |         king
+Row 6:        woman |        woman |        woman |        woman |        woman |         king |         king |         king |         king |         king
+Row 7:        woman |        woman |        woman |        woman |        woman |         king |         king |         king |         king |         king
+Row 8:        woman |        woman |        woman |        woman |        woman |        woman |         king |         king |         king |         king
+Row 9:        woman |        woman |        woman |        woman |        woman |        woman |         king |         king |         king |         king
 
 **Example Output (Glove)**:
 
@@ -157,6 +190,14 @@ Test case 1: ['man', 'woman', 'king']
 Interpolation grid (2D manifold):
   Corners: [man] at [0,0], [woman] at [9,0], [king] at [0,9]
   Fourth corner [9,9] = woman + king - man (computed)
+
+📊 Parallelogram Error (Wobbliness):
+  Mean L2 distance:  1.6432
+  Max L2 distance:   2.8272
+  Min L2 distance:   0.0000
+  Std L2 distance:   0.7509
+
+  (This measures how much the decoded words deviate from the ideal parallelogram)
 
 Row 0:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
 Row 1:          man |          man |          man |          man |          man |         king |         king |         king |         king |         king
@@ -168,6 +209,57 @@ Row 6:        woman |        woman |        woman |        woman |       mother 
 Row 7:        woman |        woman |        woman |        woman |       mother |       mother |        queen |         king |         king |         king
 Row 8:        woman |        woman |        woman |        woman |       mother |       mother |        queen |        queen |         king |         king
 Row 9:        woman |        woman |        woman |        woman |       mother |       mother |       mother |        queen |         king |         king
+
+## The Wobbly Line Hypothesis
+
+When performing latent space interpolation, we compute a perfect parallelogram of points in the high-dimensional latent space. However, when we decode these points (for the autoencoder) or find nearest neighbors (for GloVe/Word2Vec), we're performing a **quantization** operation that rounds the continuous latent representations to discrete outputs.
+
+This quantization means the actual decoded/quantized words don't form a perfect parallelogram in latent space. We call this the **"Wobbly Line Hypothesis"** - the parallelogram is "wobbly" due to discretization errors.
+
+### Measuring Wobbliness
+
+The `interp_demo.py` script now quantifies this wobbliness by:
+
+1. **Computing the ideal parallelogram** in latent space (continuous interpolation)
+2. **Decoding/quantizing** these points to discrete outputs (words)
+3. **Re-encoding** the decoded outputs to get their actual latent positions
+4. **Computing L2 distance** between ideal and actual positions for all grid points
+
+Example output:
+```
+📊 Parallelogram Error (Wobbliness):
+  Mean L2 distance:  2.3456
+  Max L2 distance:   5.6789
+  Min L2 distance:   0.1234
+  Std L2 distance:   1.2345
+
+  (This measures how much the decoded words deviate from the ideal parallelogram)
+```
+
+### 3D Visualization
+
+The web interface (`app.py`) provides an interactive Three.js visualization that shows the wobble differently based on the model type:
+
+**For Character-Level Autoencoder:**
+- Uses **PCA** to reduce the 256D latent space (128D hidden + 128D cell state) to 3D
+- Renders the **ideal parallelogram as a semi-transparent green surface mesh** (the continuous manifold)
+- Shows **actual decoded/re-encoded points in red** (the wobble/discretization)
+- Highlights the **3 input corner points as yellow spheres**
+- Highlights the **computed 4th corner as a magenta sphere** (word2 + word3 - word1)
+- Connects ideal↔actual points with **yellow offset lines** to show the wobble
+- All continuous interpolations are valid (no KNN needed)
+
+**For GloVe/Word2Vec:**
+- Uses **PCA** to reduce embeddings (50D for GloVe, 300D for Word2Vec) to 3D
+- Shows ideal interpolation points and nearest-neighbor quantized points
+- Uses KNN to find closest real words at each grid point
+
+**Interactive Features:**
+- **Drag to rotate** the 3D view
+- **Scroll to zoom** in and out
+- **Hover over any point** to see the corresponding decoded word in a tooltip
+
+This visualization clearly shows how the ideal continuous parallelogram "wobbles" when decoded to discrete words and re-encoded, validating the wobble hypothesis.
 
 ## Model Details
 

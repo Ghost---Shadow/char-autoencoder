@@ -71,6 +71,67 @@ class EmbeddingModel:
         distances, indices = self.knn.kneighbors([embedding], n_neighbors=k)
         return self.vocab[indices[0][0]]
 
+    def compute_parallelogram_error(
+        self, word1: str, word2: str, word3: str, grid_size: int = 10
+    ):
+        """
+        Compute the "wobbliness" of the parallelogram by measuring L2 distance
+        between ideal interpolated points and actual nearest-neighbor embeddings.
+
+        Args:
+            word1, word2, word3: Three words to interpolate between
+            grid_size: Size of the grid
+
+        Returns:
+            Dictionary with error statistics and visualization data
+        """
+        # Get embeddings for input words
+        try:
+            emb1 = self.get_embedding(word1)
+            emb2 = self.get_embedding(word2)
+            emb3 = self.get_embedding(word3)
+        except KeyError as e:
+            raise ValueError(f"Word not in vocabulary: {e}")
+
+        # Create interpolation grid (IDEAL parallelogram)
+        ideal_embeddings = []
+        actual_embeddings = []
+
+        for i in range(grid_size):
+            for j in range(grid_size):
+                t1 = i / (grid_size - 1)  # 0 to 1
+                t2 = j / (grid_size - 1)  # 0 to 1
+
+                # Bilinear interpolation (ideal point)
+                ideal_emb = emb1 + t1 * (emb2 - emb1) + t2 * (emb3 - emb1)
+                ideal_embeddings.append(ideal_emb)
+
+                # Find nearest neighbor (quantization)
+                nearest_word = self.find_nearest(ideal_emb)
+
+                # Get actual embedding of the nearest word
+                actual_emb = self.get_embedding(nearest_word)
+                actual_embeddings.append(actual_emb)
+
+        ideal_embeddings = np.array(ideal_embeddings)
+        actual_embeddings = np.array(actual_embeddings)
+
+        # Compute L2 distances
+        distances = np.linalg.norm(ideal_embeddings - actual_embeddings, axis=1)
+
+        # Reshape for grid
+        distances_grid = distances.reshape(grid_size, grid_size)
+
+        return {
+            "mean_error": float(np.mean(distances)),
+            "max_error": float(np.max(distances)),
+            "min_error": float(np.min(distances)),
+            "std_error": float(np.std(distances)),
+            "error_grid": distances_grid.tolist(),
+            "ideal_embeddings": ideal_embeddings,
+            "actual_embeddings": actual_embeddings,
+        }
+
 
 class GloVeModel(EmbeddingModel):
     """GloVe pre-trained embeddings."""
