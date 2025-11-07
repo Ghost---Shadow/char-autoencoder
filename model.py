@@ -1,174 +1,299 @@
-import tensorflow as tf
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 
-from MyLSTM import MyLSTM
+from lstm_cell import CustomLSTM
 from preprocess import stringsToArray
 
-class Seq2SeqAutoencoder:
-    def __init__(self,sess,state_size=128,time_steps=10,input_size=27,unk_token=26,logdir='./logs'):
-        # Global constants
+
+class Seq2SeqAutoencoder(nn.Module):
+    """
+    Sequence-to-sequence autoencoder for character-level sequences.
+    Encodes input sequences to a latent representation and decodes back.
+    """
+
+    def __init__(self, state_size=128, time_steps=10, input_size=27, unk_token=26):
+        """
+        Initialize the autoencoder.
+
+        Args:
+            state_size: Dimension of LSTM hidden state
+            time_steps: Length of input sequences
+            input_size: Size of input vocabulary (27 = 26 letters + space)
+            unk_token: Token used for padding/unknown characters
+        """
+        super(Seq2SeqAutoencoder, self).__init__()
+
         self.UNK_TOKEN = unk_token
         self.state_size = state_size
         self.time_steps = time_steps
         self.input_size = input_size
         self.interp_steps = 4
 
-        # Placeholder
-        self.x_ = tf.placeholder(tf.int32,[None,time_steps,1],name='x_input')
-        self.s_ = tf.placeholder(tf.float32,[None,state_size],name='s_input')
-        self.c_ = tf.placeholder(tf.float32,[None,state_size],name='c_input')        
+        # Custom LSTM
+        self.lstm = CustomLSTM(input_size, state_size)
 
-        with tf.name_scope('process_input'):
-            self.x = tf.squeeze(tf.one_hot(self.x_,self.input_size,axis=2),
-                                axis=3,name='x_one_hot')
-            self.y = self._getY(self.x)
-            self.x = tf.unstack(self.x,axis=1)
-            self.s = self.s_
-            self.c = self.c_
+        # Prediction layers
+        self.W1 = nn.Parameter(torch.randn(state_size, state_size // 2))
+        self.B1 = nn.Parameter(torch.randn(state_size // 2))
 
-        with tf.name_scope('prediction_vars'):
-            self.W1 = tf.Variable(tf.random_normal([self.state_size,self.state_size//2]))
-            self.W1 = tf.expand_dims(self.W1,0)
-            self.B1 = tf.Variable(tf.random_normal([self.state_size//2]))
-            
-            self.W2 = tf.Variable(tf.random_normal([self.state_size//2,self.input_size]))
-            self.W2 = tf.expand_dims(self.W2,0)
-            self.B2 = tf.Variable(tf.random_normal([self.input_size]))
+        self.W2 = nn.Parameter(torch.randn(state_size // 2, input_size))
+        self.B2 = nn.Parameter(torch.randn(input_size))
 
-        # Model
-        myLstm = MyLSTM(self.input_size,self.state_size)
-        with tf.name_scope('auto_encoder'):
-            self.outputs = myLstm.autoencode(self.x)
-            
-        with tf.name_scope('get_predictions'):
-            self.predictions = self._getPredictions(self.outputs)
+    def _get_predictions(self, outputs):
+        """
+        Convert LSTM outputs to character predictions.
 
-        # Evaluation
-        self.encode_op = myLstm.encode(self.x)
-        self.decode_op = self._getPredictions(myLstm.decode(self.s,self.c,time_steps))
-        self.decode_op = tf.argmax(self.decode_op,2)
+        Args:
+            outputs: List of LSTM outputs, each (batch_size, state_size)
 
-        # Text summary
-        text_init = np.squeeze(np.array([[['']*(self.interp_steps+1)]*(self.interp_steps+1)]))
-        #text_init = ['','','']
-        self.text_variable = tf.Variable(text_init,name='text_variable')
-        tf.summary.text('text_summary',tf.convert_to_tensor(self.text_variable,dtype=tf.string))
+        Returns:
+            predictions: Tensor of shape (batch_size, time_steps, input_size)
+        """
+        # Stack outputs: (time_steps, batch_size, state_size)
+        outputs = torch.stack(outputs, dim=0)
+        # Transpose to: (batch_size, time_steps, state_size)
+        outputs = outputs.transpose(0, 1)
 
-        # Loss and optimization
-        self.loss = self._getLoss(self.x,self.predictions)
-        self.optimization_op = tf.train.AdamOptimizer().minimize(self.loss)
+        # First prediction layer with sigmoid activation
+        layer1 = torch.sigmoid(outputs @ self.W1 + self.B1)
 
-        # Evaluation
-        self.accuracy = self._getAccuracy(self.x,self.predictions)
-        self.summaryWriter = tf.summary.FileWriter(logdir,sess.graph)        
-        self.summary_op = tf.summary.merge_all()
+        # Second prediction layer (logits)
+        predictions = layer1 @ self.W2 + self.B2
 
-        # Init all vars
-        init=tf.global_variables_initializer()
-        sess.run(init)
-
-    def _getPredictions(self,outputs):        
-        with tf.name_scope('reshape_outputs'):
-            outputs = tf.stack(outputs,name='restack')
-            outputs = tf.transpose(outputs,[1,0,2],name='transpose')
-            batch_size = tf.shape(outputs,name='batch_size')[0]
-
-        with tf.name_scope('prediction_layer_1'):          
-            W1 = tf.tile(self.W1,[batch_size,1,1])
-            layer1 = tf.nn.sigmoid(tf.matmul(outputs,W1)+self.B1)
-
-        with tf.name_scope('prediction_layer_2'):
-            W2 = tf.tile(self.W2,[batch_size,1,1])
-            predictions = tf.matmul(layer1,W2)+self.B2
-            
         return predictions
-    
-    def _getY(self,x):
-        with tf.name_scope('reverse_input'):
-            y = tf.reverse(x,axis=[1])
-        return y
-    
-    def _getLoss(self,x,predictions):
-        y = self.y
 
-        with tf.name_scope('loss_calculation'):
-            loss = tf.nn.softmax_cross_entropy_with_logits(logits=predictions,labels=y)
-            loss = tf.reduce_mean(loss)
-            tf.summary.scalar('loss',loss)
+    def _get_y(self, x):
+        """
+        Get target by reversing input sequence.
+
+        Args:
+            x: Input tensor (batch_size, time_steps, input_size)
+
+        Returns:
+            y: Reversed input (batch_size, time_steps, input_size)
+        """
+        return torch.flip(x, dims=[1])
+
+    def forward(self, x):
+        """
+        Forward pass through autoencoder.
+
+        Args:
+            x: Input tensor of shape (batch_size, time_steps) with integer indices
+
+        Returns:
+            predictions: Logits of shape (batch_size, time_steps, input_size)
+            y: Target (reversed one-hot encoded input)
+        """
+        # Convert to one-hot encoding
+        x_onehot = F.one_hot(
+            x, num_classes=self.input_size
+        ).float()  # (batch_size, time_steps, input_size)
+
+        # Get reversed target
+        y = self._get_y(x_onehot)
+
+        # Unstack along time dimension to list
+        x_list = [x_onehot[:, t, :] for t in range(self.time_steps)]
+
+        # Autoencode
+        outputs = self.lstm.autoencode(x_list)
+
+        # Get predictions
+        predictions = self._get_predictions(outputs)
+
+        return predictions, y
+
+    def encode(self, x):
+        """
+        Encode input sequence to latent representation.
+
+        Args:
+            x: Input tensor of shape (batch_size, time_steps) with integer indices
+
+        Returns:
+            s: Hidden state (batch_size, state_size)
+            c: Cell state (batch_size, state_size)
+        """
+        # Convert to one-hot encoding
+        x_onehot = F.one_hot(x, num_classes=self.input_size).float()
+
+        # Unstack along time dimension
+        x_list = [x_onehot[:, t, :] for t in range(self.time_steps)]
+
+        # Encode
+        s, c = self.lstm.encode(x_list)
+
+        return s, c
+
+    def decode(self, s, c):
+        """
+        Decode from latent representation.
+
+        Args:
+            s: Hidden state (batch_size, state_size)
+            c: Cell state (batch_size, state_size)
+
+        Returns:
+            predictions: Argmax predictions (batch_size, time_steps)
+        """
+        # Decode
+        outputs = self.lstm.decode(s, c, self.time_steps)
+
+        # Get predictions
+        predictions = self._get_predictions(outputs)
+
+        # Argmax to get character indices
+        predictions = torch.argmax(predictions, dim=2)
+
+        return predictions
+
+    def compute_loss(self, predictions, y):
+        """
+        Compute cross-entropy loss.
+
+        Args:
+            predictions: Logits (batch_size, time_steps, input_size)
+            y: Target one-hot vectors (batch_size, time_steps, input_size)
+
+        Returns:
+            loss: Scalar loss value
+        """
+        # Reshape for cross entropy
+        predictions_flat = predictions.reshape(-1, self.input_size)
+        y_indices = torch.argmax(y, dim=2).reshape(-1)
+
+        loss = F.cross_entropy(predictions_flat, y_indices)
+
         return loss
 
-    def _getAccuracy(self,x,predictions):
-        y = self.y
+    def compute_accuracy(self, predictions, y):
+        """
+        Compute character-level accuracy.
 
-        with tf.name_scope('calculate_accuracy'):
-            arg_maxes1 = tf.argmax(predictions,2)
-            arg_maxes2 = tf.argmax(y,2)
-            correct_predictions=tf.equal(arg_maxes1,arg_maxes2)
-            accuracy=tf.reduce_mean(tf.cast(correct_predictions,tf.float32))
-            tf.summary.scalar('accuracy',accuracy)
+        Args:
+            predictions: Logits (batch_size, time_steps, input_size)
+            y: Target one-hot vectors (batch_size, time_steps, input_size)
+
+        Returns:
+            accuracy: Scalar accuracy value
+        """
+        pred_indices = torch.argmax(predictions, dim=2)
+        y_indices = torch.argmax(y, dim=2)
+
+        correct = (pred_indices == y_indices).float()
+        accuracy = correct.mean()
+
         return accuracy
 
-    def argmaxToString(self,v):
+    def argmax_to_string(self, v):
+        """
+        Convert argmax indices to string.
+
+        Args:
+            v: Numpy array of character indices
+
+        Returns:
+            s: Decoded string
+        """
         s = ""
         for i in v:
             if i == self.UNK_TOKEN:
-                s += ' '
+                s += " "
             else:
-                s += chr(i + ord('a'))
-        
+                s += chr(i + ord("a"))
+
+        # Reverse the string (since output is reversed)
         s = s[::-1]
         return s
 
-    def _getGrid(self,a,b,c):
-        d = np.zeros([self.interp_steps+1,self.interp_steps+1,a.shape[0]])
+    def _get_grid(self, a, b, c):
+        """
+        Create interpolation grid between three vectors.
+
+        Args:
+            a, b, c: Vectors to interpolate between
+
+        Returns:
+            d: Grid of interpolated vectors
+        """
+        d = np.zeros([self.interp_steps + 1, self.interp_steps + 1, a.shape[0]])
 
         ab = b - a
         ac = c - a
-        
-        for i in range(self.interp_steps+1):
+
+        for i in range(self.interp_steps + 1):
             t1 = i / self.interp_steps
-            for j in range(self.interp_steps+1):
-                t2 = j / self.interp_steps                
-                d[i,j] = a + (t1 * ab + t2 * ac)
-                
+            for j in range(self.interp_steps + 1):
+                t2 = j / self.interp_steps
+                d[i, j] = a + (t1 * ab + t2 * ac)
+
         return d
-        
-    
-    def _getInterpolatedVectors(self,s,c):
+
+    def _get_interpolated_vectors(self, s, c):
+        """
+        Get interpolated vectors for visualization.
+
+        Args:
+            s: Hidden states for 3 examples
+            c: Cell states for 3 examples
+
+        Returns:
+            s_m: Grid of interpolated hidden states
+            c_m: Grid of interpolated cell states
+        """
         batch_size = (self.interp_steps + 1) ** 2
-        s_m = np.reshape(self._getGrid(s[0],s[1],s[2]),[batch_size,self.state_size])
-        c_m = np.reshape(self._getGrid(c[0],c[1],c[2]),[batch_size,self.state_size])
-        return s_m,c_m
-    
-    def generate_text_summary(self,sess,strings):
+        s_m = np.reshape(
+            self._get_grid(s[0], s[1], s[2]), [batch_size, self.state_size]
+        )
+        c_m = np.reshape(
+            self._get_grid(c[0], c[1], c[2]), [batch_size, self.state_size]
+        )
+        return s_m, c_m
+
+    @torch.no_grad()
+    def generate_text_summary(self, strings, device="cpu"):
+        """
+        Generate interpolated text for visualization.
+
+        Args:
+            strings: List of 3 strings to interpolate between
+            device: Device to run on
+
+        Returns:
+            result_strings: Grid of interpolated strings
+        """
         assert len(strings) == 3
-        with tf.name_scope('text_summary'):
-            # Encode given strings
-            v = stringsToArray(strings)
-            s,c = sess.run(self.encode_op,feed_dict={self.x_:v})
 
-            # Interpolate in latent space
-            s,c = self._getInterpolatedVectors(s,c)
+        # Encode given strings
+        v = stringsToArray(strings)
+        v = torch.from_numpy(v).squeeze(-1).long().to(device)
+        s, c = self.encode(v)
 
-            # Decode
-            indices_batch = sess.run(self.decode_op,feed_dict={self.s_:s,self.c_:c})
+        # Convert to numpy for interpolation
+        s = s.cpu().numpy()
+        c = c.cpu().numpy()
 
-            # Convert to string
-            resultStrings = []
-            for indices in indices_batch:
-                resultStrings.append(self.argmaxToString(indices))
-            resultStrings = np.reshape(np.array(resultStrings),[self.interp_steps+1,
-                                                            self.interp_steps+1])
+        # Interpolate in latent space
+        s_interp, c_interp = self._get_interpolated_vectors(s, c)
 
-            # Assign to summary variable
-            sess.run(self.text_variable.assign(resultStrings))
-        print(resultStrings)
+        # Convert back to tensors
+        s_interp = torch.from_numpy(s_interp).float().to(device)
+        c_interp = torch.from_numpy(c_interp).float().to(device)
 
-    def fit(self,sess,batch):
-        sess.run(self.optimization_op, feed_dict={self.x_:batch})
+        # Decode
+        indices_batch = self.decode(s_interp, c_interp)
+        indices_batch = indices_batch.cpu().numpy()
 
-    def eval_and_write_summaries(self,sess,batch,epoch):
-        accuracy,loss,summary_output=sess.run([self.accuracy,self.loss,self.summary_op],
-                                        feed_dict={self.x_:batch})
-        self.summaryWriter.add_summary(summary_output,epoch)
-        return accuracy,loss
+        # Convert to strings
+        result_strings = []
+        for indices in indices_batch:
+            result_strings.append(self.argmax_to_string(indices))
+
+        result_strings = np.reshape(
+            np.array(result_strings), [self.interp_steps + 1, self.interp_steps + 1]
+        )
+
+        return result_strings
