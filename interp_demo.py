@@ -23,10 +23,10 @@ model = Seq2SeqAutoencoder(
 ).to(device)
 
 # Load checkpoint
-checkpoint_path = Path("./checkpoints/model_final.pt")
+checkpoint_path = Path("./artifacts/model_final.pt")
 if not checkpoint_path.exists():
     # Try to find the latest checkpoint
-    checkpoint_dir = Path("./checkpoints")
+    checkpoint_dir = Path("./artifacts")
     checkpoints = sorted(checkpoint_dir.glob("model_epoch_*.pt"))
     if checkpoints:
         checkpoint_path = checkpoints[-1]

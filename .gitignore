@@ -90,7 +90,10 @@ ENV/
 # Rope project settings
 .ropeproject
 
-# Custom
+# Custom - TensorFlow legacy
 logs/
 checkpoints/
-*.npy
+
+# Data and artifacts
+data/
+artifacts/
