@@ -29,7 +29,7 @@ class Seq2SeqAutoencoder(nn.Module):
         self.state_size = state_size
         self.time_steps = time_steps
         self.input_size = input_size
-        self.interp_steps = 4
+        self.interp_steps = 9  # 10x10 grid (increased from 4 for 5x5)
 
         # Custom LSTM
         self.lstm = CustomLSTM(input_size, state_size)

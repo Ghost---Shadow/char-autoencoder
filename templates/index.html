@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Character Autoencoder - Latent Space Interpolation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .input-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .input-group input {
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #666;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .examples {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .examples h3 {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: #555;
+        }
+
+        .example-chips {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .example-chip {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .example-chip:hover {
+            border-color: #667eea;
+            background: #f0f2ff;
+        }
+
+        .result-section {
+            display: none;
+        }
+
+        .result-section.show {
+            display: block;
+        }
+
+        .result-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .result-header h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .result-words {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .result-word {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .interpolation-grid {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 8px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .grid-cell {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f8f9fa;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            font-size: 0.75rem;
+            transition: all 0.3s;
+            word-break: break-all;
+            padding: 3px;
+        }
+
+        .grid-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            background: white;
+            z-index: 10;
+        }
+
+        .grid-cell.corner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-error {
+            background: #fee;
+            border-left: 4px solid #f44;
+            color: #c00;
+        }
+
+        .alert-info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196f3;
+            color: #1976d2;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .loading.show {
+            display: block;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #1976d2;
+        }
+
+        .info-box ul {
+            margin-left: 20px;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .interpolation-grid {
+                grid-template-columns: repeat(10, 1fr);
+                gap: 3px;
+            }
+
+            .grid-cell {
+                font-size: 0.6rem;
+                padding: 2px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Character Autoencoder</h1>
+            <p>Explore the latent space by interpolating between words</p>
+        </div>
+
+        <div class="card input-section">
+            <h2>Enter Three Words</h2>
+
+            <div class="alert alert-error" id="errorAlert"></div>
+
+            <div class="input-grid">
+                <div class="input-group">
+                    <label for="word1">Word 1 (Top-Left Corner)</label>
+                    <input type="text" id="word1" placeholder="e.g., apple" maxlength="10">
+                </div>
+                <div class="input-group">
+                    <label for="word2">Word 2 (Bottom-Left Corner)</label>
+                    <input type="text" id="word2" placeholder="e.g., ball" maxlength="10">
+                </div>
+                <div class="input-group">
+                    <label for="word3">Word 3 (Top-Right Corner)</label>
+                    <input type="text" id="word3" placeholder="e.g., goat" maxlength="10">
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" id="interpolateBtn">
+                    <span>✨</span> Interpolate
+                </button>
+                <button class="btn btn-secondary" id="clearBtn">
+                    <span>🔄</span> Clear
+                </button>
+            </div>
+
+            <div class="examples">
+                <h3>💡 Try these examples:</h3>
+                <div class="example-chips" id="exampleChips"></div>
+            </div>
+
+            <div class="info-box">
+                <strong>How it works:</strong>
+                <ul>
+                    <li>The model encodes each word into a latent space representation</li>
+                    <li>It creates a 2D grid of interpolated points between the three words</li>
+                    <li>Each point is decoded back to generate intermediate word forms</li>
+                    <li>Only lowercase letters (a-z) are supported, max 10 characters</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Interpolating in latent space...</p>
+        </div>
+
+        <div class="card result-section" id="resultSection">
+            <div class="result-header">
+                <h2>Interpolation Grid</h2>
+                <div class="result-words" id="resultWords"></div>
+            </div>
+            <div class="interpolation-grid" id="interpolationGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        // Load examples on page load
+        fetch('/examples')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('exampleChips');
+                data.examples.forEach(example => {
+                    const chip = document.createElement('div');
+                    chip.className = 'example-chip';
+                    chip.textContent = example.join(' → ');
+                    chip.onclick = () => {
+                        document.getElementById('word1').value = example[0];
+                        document.getElementById('word2').value = example[1];
+                        document.getElementById('word3').value = example[2];
+                    };
+                    container.appendChild(chip);
+                });
+            });
+
+        // Handle interpolation
+        document.getElementById('interpolateBtn').addEventListener('click', async () => {
+            const word1 = document.getElementById('word1').value.trim();
+            const word2 = document.getElementById('word2').value.trim();
+            const word3 = document.getElementById('word3').value.trim();
+
+            // Hide previous results and errors
+            document.getElementById('errorAlert').classList.remove('show');
+            document.getElementById('resultSection').classList.remove('show');
+
+            // Validate inputs
+            if (!word1 || !word2 || !word3) {
+                showError('Please enter all three words.');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').classList.add('show');
+            document.getElementById('interpolateBtn').disabled = true;
+
+            try {
+                const response = await fetch('/interpolate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ word1, word2, word3 })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    displayResults(data.grid, data.words);
+                } else {
+                    showError(data.error);
+                }
+            } catch (error) {
+                showError('Failed to connect to server: ' + error.message);
+            } finally {
+                document.getElementById('loading').classList.remove('show');
+                document.getElementById('interpolateBtn').disabled = false;
+            }
+        });
+
+        // Handle clear button
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            document.getElementById('word1').value = '';
+            document.getElementById('word2').value = '';
+            document.getElementById('word3').value = '';
+            document.getElementById('errorAlert').classList.remove('show');
+            document.getElementById('resultSection').classList.remove('show');
+        });
+
+        // Handle Enter key
+        ['word1', 'word2', 'word3'].forEach(id => {
+            document.getElementById(id).addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    document.getElementById('interpolateBtn').click();
+                }
+            });
+        });
+
+        function showError(message) {
+            const alert = document.getElementById('errorAlert');
+            alert.textContent = message;
+            alert.classList.add('show');
+        }
+
+        function displayResults(grid, words) {
+            // Display the input words
+            const wordsContainer = document.getElementById('resultWords');
+            wordsContainer.innerHTML = words.map(word =>
+                `<div class="result-word">${word}</div>`
+            ).join('');
+
+            // Display the grid
+            const gridContainer = document.getElementById('interpolationGrid');
+            gridContainer.innerHTML = '';
+
+            grid.forEach((row, i) => {
+                row.forEach((word, j) => {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell';
+
+                    // Highlight corners (input words) - 10x10 grid
+                    if ((i === 0 && j === 0) || (i === 9 && j === 0) || (i === 0 && j === 9)) {
+                        cell.classList.add('corner');
+                    }
+
+                    cell.textContent = word;
+                    gridContainer.appendChild(cell);
+                });
+            });
+
+            // Show results
+            document.getElementById('resultSection').classList.add('show');
+
+            // Scroll to results
+            document.getElementById('resultSection').scrollIntoView({
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    </script>
+</body>
+</html>

@@ -40,9 +40,12 @@ pip install -r requirements.txt
 ├── lstm_cell.py          # Custom LSTM implementation
 ├── model.py              # Seq2SeqAutoencoder model
 ├── train.py              # Training script with tqdm
-├── interp_demo.py        # Interpolation demo script
+├── interp_demo.py        # CLI interpolation demo script
+├── app.py                # Flask web server for interactive demo
+├── templates/
+│   └── index.html        # Web interface for interpolation
 ├── run_flow.sh           # Complete pipeline automation script
-├── requirements.txt      # Python dependencies
+├── requirements.txt      # Python dependencies (includes Flask)
 ├── README.md             # This file
 ├── data/                 # Downloaded and preprocessed data (gitignored)
 ├── artifacts/            # Model checkpoints (gitignored)
@@ -124,12 +127,27 @@ Training:  25%|███▌      | 2500/10000 [02:15<06:45, 18.5epoch/s, loss=1.
 
 #### 3. Visualize Latent Space
 
-After training, run the interpolation demo:
+You have two options for visualizing interpolations:
+
+**Option A: Web Interface (Recommended)**
+```bash
+python app.py
+```
+Then open your browser to: **http://localhost:5000**
+
+Features:
+- 🎨 Beautiful interactive web interface
+- ⌨️ Type your own custom words
+- 📊 Visual grid display of interpolations
+- 💡 Pre-loaded example word triplets
+- 🚀 Real-time results
+
+**Option B: Command Line**
 ```bash
 python interp_demo.py
 ```
 
-This loads the trained model and demonstrates latent space interpolation for various word triplets, showing smooth transitions between words in the learned representation space.
+This loads the trained model and demonstrates latent space interpolation for various word triplets in the terminal.
 
 **Example Output**:
 ```
