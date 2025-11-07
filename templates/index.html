@@ -690,6 +690,8 @@
             // Hide previous results and errors
             document.getElementById('errorAlert').classList.remove('show');
             document.getElementById('resultSection').classList.remove('show');
+            document.getElementById('vizSection').classList.remove('show');
+            cleanupThreeScene(); // Clean up previous Three.js scene
 
             // Validate inputs
             if (!word1 || !word2 || !word3) {
@@ -734,6 +736,7 @@
             document.getElementById('resultSection').classList.remove('show');
             document.getElementById('vizSection').classList.remove('show');
             document.getElementById('vizLoading').classList.remove('show');
+            cleanupThreeScene(); // Clean up Three.js scene
         });
 
         // Handle Enter key
@@ -837,6 +840,72 @@
         let idealPointsMesh, actualPointsMesh;
         let wordsData = [];
         let raycaster, mouse;
+        let animationFrameId = null;
+        let resizeHandler = null;
+        let mouseMoveHandler = null;
+        let mouseLeaveHandler = null;
+
+        function cleanupThreeScene() {
+            // Cancel animation loop
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            // Remove event listeners
+            if (resizeHandler) {
+                window.removeEventListener('resize', resizeHandler);
+                resizeHandler = null;
+            }
+            if (renderer && renderer.domElement) {
+                if (mouseMoveHandler) {
+                    renderer.domElement.removeEventListener('mousemove', mouseMoveHandler);
+                    mouseMoveHandler = null;
+                }
+                if (mouseLeaveHandler) {
+                    renderer.domElement.removeEventListener('mouseleave', mouseLeaveHandler);
+                    mouseLeaveHandler = null;
+                }
+            }
+
+            // Dispose of controls
+            if (controls) {
+                controls.dispose();
+                controls = null;
+            }
+
+            // Dispose of renderer
+            if (renderer) {
+                renderer.dispose();
+                renderer = null;
+            }
+
+            // Dispose of scene objects
+            if (scene) {
+                scene.traverse((object) => {
+                    if (object.geometry) {
+                        object.geometry.dispose();
+                    }
+                    if (object.material) {
+                        if (Array.isArray(object.material)) {
+                            object.material.forEach(material => material.dispose());
+                        } else {
+                            object.material.dispose();
+                        }
+                    }
+                });
+                scene.clear();
+                scene = null;
+            }
+
+            // Clear mesh references
+            idealPointsMesh = null;
+            actualPointsMesh = null;
+            camera = null;
+            raycaster = null;
+            mouse = null;
+            wordsData = [];
+        }
 
         function displayVisualization(data) {
             // Display error statistics
@@ -870,16 +939,8 @@
         function initThreeScene(idealPoints, actualPoints, vizData = {}) {
             const container = document.getElementById('vizCanvas');
 
-            // Clean up previous scene if it exists
-            if (renderer) {
-                renderer.dispose();
-                renderer = null;
-            }
-            if (controls) {
-                controls.dispose();
-                controls = null;
-            }
-
+            // Clean up previous scene completely
+            cleanupThreeScene();
             container.innerHTML = ''; // Clear previous visualization
 
             // Scene setup
@@ -1029,22 +1090,23 @@
 
             // Animation loop
             function animate() {
-                requestAnimationFrame(animate);
+                animationFrameId = requestAnimationFrame(animate);
                 controls.update();
                 renderer.render(scene, camera);
             }
             animate();
 
             // Handle window resize
-            window.addEventListener('resize', () => {
+            resizeHandler = () => {
                 camera.aspect = container.clientWidth / container.clientHeight;
                 camera.updateProjectionMatrix();
                 renderer.setSize(container.clientWidth, container.clientHeight);
-            });
+            };
+            window.addEventListener('resize', resizeHandler);
 
             // Mouse move handler for tooltips
             const tooltip = document.getElementById('tooltip');
-            renderer.domElement.addEventListener('mousemove', (event) => {
+            mouseMoveHandler = (event) => {
                 const rect = renderer.domElement.getBoundingClientRect();
 
                 // Calculate mouse position in normalized device coordinates (-1 to +1)
@@ -1075,12 +1137,14 @@
                     // Hide tooltip
                     tooltip.classList.remove('show');
                 }
-            });
+            };
+            renderer.domElement.addEventListener('mousemove', mouseMoveHandler);
 
             // Hide tooltip when mouse leaves canvas
-            renderer.domElement.addEventListener('mouseleave', () => {
+            mouseLeaveHandler = () => {
                 tooltip.classList.remove('show');
-            });
+            };
+            renderer.domElement.addEventListener('mouseleave', mouseLeaveHandler);
 
             // Hide loader after scene is initialized
             document.getElementById('vizLoading').classList.remove('show');
