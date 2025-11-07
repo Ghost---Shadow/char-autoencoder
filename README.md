@@ -21,35 +21,8 @@ The model learns to reconstruct reversed input sequences, which forces it to lea
 
 ## Requirements
 
-- Python 3.7+
-- PyTorch 1.7+ (with CUDA support optional)
-- NumPy
-- tqdm
-
-Install dependencies:
 ```bash
 pip install -r requirements.txt
-```
-
-## Project Structure
-
-```
-.
-├── download_data.py      # Auto-downloads English word list
-├── preprocess.py         # Data preprocessing utilities
-├── lstm_cell.py          # Custom LSTM implementation
-├── model.py              # Seq2SeqAutoencoder model
-├── train.py              # Training script with tqdm
-├── interp_demo.py        # CLI interpolation demo script
-├── app.py                # Flask web server for interactive demo
-├── templates/
-│   └── index.html        # Web interface for interpolation
-├── run_flow.sh           # Complete pipeline automation script
-├── requirements.txt      # Python dependencies (includes Flask)
-├── README.md             # This file
-├── data/                 # Downloaded and preprocessed data (gitignored)
-├── artifacts/            # Model checkpoints (gitignored)
-└── legacy_tensorflow/    # Original TensorFlow 1.x implementation
 ```
 
 ## Quick Start
@@ -59,32 +32,9 @@ Run the complete pipeline with one command:
 bash run_flow.sh
 ```
 
-The `run_flow.sh` script automates the entire pipeline with:
-- ✅ **Dependency checking**: Verifies Python and required packages
-- ✅ **Smart skipping**: Detects existing data/models and offers to skip steps
-- ✅ **Colored output**: Beautiful terminal output with status indicators
-- ✅ **Error handling**: Stops on errors and provides clear messages
-- ✅ **Progress tracking**: Shows what's happening at each step
+## Manual Step-by-Step
 
-The script will:
-1. Check dependencies (Python, PyTorch, NumPy, tqdm)
-2. Download the English word list (370K+ words)
-3. Preprocess data (filter & convert to numerical format)
-4. Train the model (10,000 epochs with tqdm progress bar)
-5. Run interpolation demos to visualize results
-
-## Usage
-
-### Option 1: Automated Pipeline (Recommended)
-
-Run everything automatically:
-```bash
-bash run_flow.sh
-```
-
-### Option 2: Manual Step-by-Step
-
-#### 1. Download & Preprocess Data
+### 1. Download & Preprocess Data
 
 The pipeline automatically downloads word lists from multiple sources with fallback support:
 ```bash
@@ -98,7 +48,7 @@ python preprocess.py     # Creates ./data/preprocessed.npy
 - Google 10000 common words
 - Fallback to comprehensive built-in wordlist
 
-#### 2. Train the Model
+### 2. Train the Model
 
 ```bash
 python train.py
@@ -118,14 +68,9 @@ The script will:
 - Display accuracy and loss metrics
 - Save final model to `./artifacts/model_final.pt`
 
-**Progress Bar Features**:
-```
-Training:  25%|███▌      | 2500/10000 [02:15<06:45, 18.5epoch/s, loss=1.2345, acc=0.8234]
-```
-
 **GPU Support**: The script automatically detects and uses CUDA if available.
 
-#### 3. Visualize Latent Space
+### 3. Visualize Latent Space
 
 You have two options for visualizing interpolations:
 
@@ -151,13 +96,20 @@ This loads the trained model and demonstrates latent space interpolation for var
 
 **Example Output**:
 ```
-Test case 1: ['apple', 'ball', 'goat']
+Test case 4: ['cabbage', 'cab', 'cabin']
+--------------------------------------------------------------------------------
 Interpolation grid (rows: apple→ball, cols: apple→goat):
-Row 0:      apple |      apple |      apple |     applee |       goat
-Row 1:      apple |      balll |      balll |      boall |       goat
-Row 2:       ball |       ball |       ball |       ball |       goal
-Row 3:       ball |       ball |       ball |       boal |       goat
-Row 4:       goat |       goat |       goat |       goat |       goat
+
+Row 0:      cabbage |      cabbage |      ccbbage |       cabbge |       cabbge |       cabbin |       cabbin |       ccabin |        cabin |        cabin
+Row 1:      cabbage |       cbbbge |       cabbge |       cabbge |       cabbgn |       ccabin |        cabin |        cabin |        cabin |        cabin
+Row 2:       cabbge |       cabbge |       cabbge |        abbge |        cabin |        cabin |        cabin |        cabin |        dabin |         abin
+Row 3:       cabbge |        abbge |        cabge |        cabgl |        caban |        cabin |         abin |         abin |         abin |         cbin
+Row 4:        jbbge |        cabge |        cabae |        dabal |         abal |         abal |         abin |         cbin |         cbin |          bin
+Row 5:        dabge |         abae |         abab |         abab |         abab |         cbab |          bab |          bad |          cad |          cid
+Row 6:         abab |         abab |         abab |         dbab |          bab |          bab |          cab |          cab |          cad |          cad
+Row 7:         abab |         dbab |          bab |          cab |          cab |          cab |          cab |          cab |          cad |          dad
+Row 8:          cab |          cab |          cab |          cab |          cab |          cab |          dab |          dab |          dad |           ad
+Row 9:          cab |          cab |          cab |          cab |          dab |           ab |           ab |           ab |           ab |           ad
 ```
 
 ## Model Details
@@ -232,61 +184,6 @@ Each checkpoint contains:
 - `epoch`: Current epoch number
 - `loss`: Validation loss at checkpoint
 - `accuracy`: Validation accuracy at checkpoint
-
-## Expected Results
-
-Training metrics over 10,000 epochs (on GPU):
-
-| Epoch | Accuracy | Loss  | Training Time |
-|-------|----------|-------|---------------|
-| 250   | ~37%     | ~2.25 | ~30 seconds   |
-| 1000  | ~51%     | ~1.58 | ~2 minutes    |
-| 2500  | ~75%     | ~0.74 | ~5 minutes    |
-| 5000  | ~90%+    | ~0.25 | ~10 minutes   |
-| 10000 | ~95%+    | ~0.15 | ~20 minutes   |
-
-**Note**: Times are approximate and depend on GPU/CPU performance.
-
-## Examples
-
-After training, the model can interpolate between words like:
-
-```
-apple → ball → goat
-identity → identity → identity (learns to handle repeated words)
-baseball → ball → base (discovers morphological relationships)
-```
-
-Creating intermediate representations that smoothly transition between the input words in the latent space.
-
-## Troubleshooting
-
-**Q: Training is slow**
-- Make sure you have a CUDA-capable GPU and PyTorch with CUDA support
-- Check GPU usage: `nvidia-smi` (Linux) or `Task Manager` (Windows)
-- Reduce `EPOCHS` for quick experiments
-
-**Q: Out of memory error**
-- Reduce `BATCH_SIZE` in `train.py` (try 50 or 25)
-- Close other GPU-intensive applications
-
-**Q: Model not learning well**
-- Ensure data is preprocessed correctly (check `data/preprocessed.npy` exists)
-- Try training for more epochs
-- Check that words in `interp_demo.py` are in the training data
-
-**Q: Download fails**
-- The script tries multiple sources automatically
-- If all fail, it creates a built-in fallback dataset
-- You can manually download and place in `data/wordsEn.txt`
-
-## Contributing
-
-This is a PyTorch port of a TensorFlow 1.x implementation. Contributions welcome:
-- Optimization improvements
-- Additional interpolation methods
-- Visualization tools
-- Documentation improvements
 
 ## License
 
