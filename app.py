@@ -1,6 +1,7 @@
 """
 Flask Web Server for Character Autoencoder Interpolation Demo
 Allows interactive word interpolation through a web interface.
+Supports: Autoencoder, GloVe, Word2Vec
 """
 from flask import Flask, render_template, request, jsonify
 import torch
@@ -8,6 +9,7 @@ import numpy as np
 from pathlib import Path
 
 from model import Seq2SeqAutoencoder
+from embedding_models import get_embedding_model
 
 app = Flask(__name__)
 
@@ -20,6 +22,7 @@ UNK_TOKEN = 26
 # Global model variable
 model = None
 device = None
+
 
 def load_model():
     """Load the trained model."""
@@ -55,10 +58,12 @@ def load_model():
     model.eval()
     print("Model loaded successfully!")
 
+
 @app.route("/")
 def index():
     """Render the main page."""
     return render_template("index.html")
+
 
 @app.route("/interpolate", methods=["POST"])
 def interpolate():
@@ -68,49 +73,87 @@ def interpolate():
         word1 = data.get("word1", "").strip().lower()
         word2 = data.get("word2", "").strip().lower()
         word3 = data.get("word3", "").strip().lower()
+        model_type = data.get("model_type", "autoencoder").strip().lower()
 
         # Validate inputs
         if not all([word1, word2, word3]):
-            return jsonify({
-                "success": False,
-                "error": "All three words are required."
-            }), 400
+            return (
+                jsonify({"success": False, "error": "All three words are required."}),
+                400,
+            )
 
         # Check for invalid characters (only a-z allowed)
         for word in [word1, word2, word3]:
             if not word.isalpha():
-                return jsonify({
-                    "success": False,
-                    "error": f"Invalid characters in '{word}'. Only letters (a-z) are allowed."
-                }), 400
+                return (
+                    jsonify(
+                        {
+                            "success": False,
+                            "error": f"Invalid characters in '{word}'. Only letters (a-z) are allowed.",
+                        }
+                    ),
+                    400,
+                )
 
-            if len(word) > 10:
-                return jsonify({
-                    "success": False,
-                    "error": f"Word '{word}' is too long. Maximum length is 10 characters."
-                }), 400
+        # Perform interpolation based on model type
+        if model_type == "autoencoder":
+            # Length check only for autoencoder
+            for word in [word1, word2, word3]:
+                if len(word) > 10:
+                    return (
+                        jsonify(
+                            {
+                                "success": False,
+                                "error": f"Word '{word}' is too long for autoencoder. Maximum length is 10 characters.",
+                            }
+                        ),
+                        400,
+                    )
 
-        # Perform interpolation
-        with torch.no_grad():
-            result_strings = model.generate_text_summary(
-                [word1, word2, word3],
-                device=device
+            with torch.no_grad():
+                result_strings = model.generate_text_summary(
+                    [word1, word2, word3], device=device
+                )
+            grid = result_strings.tolist()
+
+        elif model_type in ["glove", "word2vec"]:
+            try:
+                embedding_model = get_embedding_model(model_type)
+                result_strings = embedding_model.interpolate_grid(
+                    word1, word2, word3, grid_size=10
+                )
+                grid = result_strings.tolist()
+            except ValueError as e:
+                return jsonify({"success": False, "error": str(e)}), 400
+
+        else:
+            return (
+                jsonify(
+                    {"success": False, "error": f"Unknown model type: {model_type}"}
+                ),
+                400,
             )
 
-        # Convert numpy array to list for JSON serialization
-        grid = result_strings.tolist()
-
-        return jsonify({
-            "success": True,
-            "grid": grid,
-            "words": [word1, word2, word3]
-        })
+        return jsonify(
+            {
+                "success": True,
+                "grid": grid,
+                "words": [word1, word2, word3],
+                "model_type": model_type,
+            }
+        )
 
     except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": f"Error during interpolation: {str(e)}"
-        }), 500
+        import traceback
+
+        traceback.print_exc()
+        return (
+            jsonify(
+                {"success": False, "error": f"Error during interpolation: {str(e)}"}
+            ),
+            500,
+        )
+
 
 @app.route("/examples")
 def examples():
@@ -128,6 +171,7 @@ def examples():
         ["run", "walk", "jump"],
     ]
     return jsonify({"examples": example_triplets})
+
 
 if __name__ == "__main__":
     print("Loading model...")

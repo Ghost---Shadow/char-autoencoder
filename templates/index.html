@@ -326,19 +326,29 @@
             <h2>Enter Three Words</h2>
 
             <div class="alert alert-error" id="errorAlert"></div>
+            <div class="alert alert-info" id="infoAlert"></div>
+
+            <div class="input-group" style="margin-bottom: 20px;">
+                <label for="modelType"><strong>Select Model</strong></label>
+                <select id="modelType" style="padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 16px; width: 100%; max-width: 400px;">
+                    <option value="autoencoder">Character Autoencoder (Trained Model)</option>
+                    <option value="glove">GloVe Word Embeddings (KNN Lookup)</option>
+                    <option value="word2vec">Word2Vec Embeddings (KNN Lookup)</option>
+                </select>
+            </div>
 
             <div class="input-grid">
                 <div class="input-group">
                     <label for="word1">Word 1 (Top-Left Corner)</label>
-                    <input type="text" id="word1" placeholder="e.g., apple" maxlength="10">
+                    <input type="text" id="word1" placeholder="e.g., apple" maxlength="50">
                 </div>
                 <div class="input-group">
                     <label for="word2">Word 2 (Bottom-Left Corner)</label>
-                    <input type="text" id="word2" placeholder="e.g., ball" maxlength="10">
+                    <input type="text" id="word2" placeholder="e.g., ball" maxlength="50">
                 </div>
                 <div class="input-group">
                     <label for="word3">Word 3 (Top-Right Corner)</label>
-                    <input type="text" id="word3" placeholder="e.g., goat" maxlength="10">
+                    <input type="text" id="word3" placeholder="e.g., goat" maxlength="50">
                 </div>
             </div>
 
@@ -356,13 +366,13 @@
                 <div class="example-chips" id="exampleChips"></div>
             </div>
 
-            <div class="info-box">
-                <strong>How it works:</strong>
+            <div class="info-box" id="infoBox">
+                <strong>How it works (Character Autoencoder):</strong>
                 <ul>
-                    <li>The model encodes each word into a latent space representation</li>
-                    <li>It creates a 2D grid of interpolated points between the three words</li>
+                    <li>The model encodes each word into a 128-dimensional latent space</li>
+                    <li>It creates a 10×10 grid of interpolated points between the three words</li>
                     <li>Each point is decoded back to generate intermediate word forms</li>
-                    <li>Only lowercase letters (a-z) are supported, max 10 characters</li>
+                    <li>Only lowercase letters (a-z) supported, max 10 characters for autoencoder</li>
                 </ul>
             </div>
         </div>
@@ -382,6 +392,63 @@
     </div>
 
     <script>
+        // Model info texts
+        const modelInfo = {
+            autoencoder: {
+                title: 'Character Autoencoder',
+                description: [
+                    'The model encodes each word into a 128-dimensional latent space',
+                    'It creates a 10×10 grid of interpolated points between the three words',
+                    'Each point is decoded back to generate intermediate word forms',
+                    'Only lowercase letters (a-z) supported, max 10 characters for autoencoder'
+                ]
+            },
+            glove: {
+                title: 'GloVe Word Embeddings',
+                description: [
+                    'Uses pre-trained GloVe embeddings (50-dimensional vectors)',
+                    'Creates a 10×10 grid of interpolated points in embedding space',
+                    'Uses KNN (K-Nearest Neighbors) to find closest real words at each grid point',
+                    'Trained on Wikipedia + Gigaword corpus (400K vocabulary)',
+                    'Note: First use downloads the model (~66MB)'
+                ]
+            },
+            word2vec: {
+                title: 'Word2Vec Embeddings',
+                description: [
+                    'Uses pre-trained Word2Vec embeddings (300-dimensional vectors)',
+                    'Creates a 10×10 grid of interpolated points in embedding space',
+                    'Uses KNN to find closest real words at each grid point',
+                    'Trained on Google News corpus (100K most common words)',
+                    'Note: First use downloads the model (~1.6GB, may take time)'
+                ]
+            }
+        };
+
+        // Update info box when model changes
+        document.getElementById('modelType').addEventListener('change', (e) => {
+            const modelType = e.target.value;
+            const info = modelInfo[modelType];
+            const infoBox = document.getElementById('infoBox');
+
+            infoBox.innerHTML = `
+                <strong>How it works (${info.title}):</strong>
+                <ul>
+                    ${info.description.map(item => `<li>${item}</li>`).join('')}
+                </ul>
+            `;
+
+            // Show info alert for first-time GloVe/Word2Vec users
+            const infoAlert = document.getElementById('infoAlert');
+            if (modelType === 'glove' || modelType === 'word2vec') {
+                const size = modelType === 'glove' ? '~66MB' : '~1.6GB';
+                infoAlert.textContent = `ℹ️ ${info.title} will be downloaded on first use (${size}). Subsequent uses will be instant.`;
+                infoAlert.classList.add('show');
+            } else {
+                infoAlert.classList.remove('show');
+            }
+        });
+
         // Load examples on page load
         fetch('/examples')
             .then(response => response.json())
@@ -405,6 +472,7 @@
             const word1 = document.getElementById('word1').value.trim();
             const word2 = document.getElementById('word2').value.trim();
             const word3 = document.getElementById('word3').value.trim();
+            const modelType = document.getElementById('modelType').value;
 
             // Hide previous results and errors
             document.getElementById('errorAlert').classList.remove('show');
@@ -426,13 +494,13 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ word1, word2, word3 })
+                    body: JSON.stringify({ word1, word2, word3, model_type: modelType })
                 });
 
                 const data = await response.json();
 
                 if (data.success) {
-                    displayResults(data.grid, data.words);
+                    displayResults(data.grid, data.words, data.model_type);
                 } else {
                     showError(data.error);
                 }
@@ -468,12 +536,18 @@
             alert.classList.add('show');
         }
 
-        function displayResults(grid, words) {
-            // Display the input words
+        function displayResults(grid, words, modelType) {
+            // Display the input words with model info
             const wordsContainer = document.getElementById('resultWords');
-            wordsContainer.innerHTML = words.map(word =>
-                `<div class="result-word">${word}</div>`
-            ).join('');
+            const modelNames = {
+                autoencoder: 'Character Autoencoder',
+                glove: 'GloVe Embeddings',
+                word2vec: 'Word2Vec Embeddings'
+            };
+            wordsContainer.innerHTML = `
+                <div class="result-word" style="background: #2196f3;">${modelNames[modelType] || modelType}</div>
+                ${words.map(word => `<div class="result-word">${word}</div>`).join('')}
+            `;
 
             // Display the grid
             const gridContainer = document.getElementById('interpolationGrid');

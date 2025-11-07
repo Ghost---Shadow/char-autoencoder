@@ -28,6 +28,7 @@ if not data_path.exists():
     print(f"Data not found at {data_path}")
     print("Running preprocessing to download and prepare data...")
     from preprocess import preprocess
+
     preprocess()
 
 data = np.load(data_path)
@@ -101,14 +102,18 @@ with tqdm(range(1, EPOCHS + 1), desc="Training", unit="epoch") as pbar:
                 )
 
                 # Print results
-                tqdm.write(f"\nEpoch {epoch:5d} | Accuracy: {accuracy:.4f} | Loss: {loss_val:.4f}")
+                tqdm.write(
+                    f"\nEpoch {epoch:5d} | Accuracy: {accuracy:.4f} | Loss: {loss_val:.4f}"
+                )
                 tqdm.write("Interpolation grid:")
                 for row in result_strings:
                     tqdm.write(" | ".join(f"{s:>10s}" for s in row))
                 tqdm.write("-" * 60)
 
                 # Update progress bar with evaluation metrics
-                pbar.set_postfix({"loss": f"{loss_val.item():.4f}", "acc": f"{accuracy.item():.4f}"})
+                pbar.set_postfix(
+                    {"loss": f"{loss_val.item():.4f}", "acc": f"{accuracy.item():.4f}"}
+                )
 
             # Save checkpoint
             checkpoint_path = checkpoint_dir / f"model_epoch_{epoch}.pt"
